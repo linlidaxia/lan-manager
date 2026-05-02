@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>局域网设备管理器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Noto Sans SC', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        :root {
+            --bg-primary: #0a0e14;
+            --bg-secondary: #111920;
+            --bg-tertiary: #1a222d;
+            --accent: #00d9ff;
+            --accent-dim: #00d9ff33;
+            --text-primary: #e6e8eb;
+            --text-secondary: #7d8893;
+            --success: #00ff88;
+            --danger: #ff4757;
+            --warning: #ffa502;
+        }
+        
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .glass {
+            background: rgba(17, 25, 32, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 217, 255, 0.1);
+        }
+        
+        .glow { box-shadow: 0 0 20px var(--accent-dim); }
+        
+        .btn-accent {
+            background: linear-gradient(135deg, var(--accent), #0891b2);
+            color: #000;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-accent:hover {
+            box-shadow: 0 0 20px var(--accent-dim);
+            transform: translateY(-1px);
+        }
+        
+        .btn-outline {
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            background: transparent;
+        }
+        .btn-outline:hover {
+            background: var(--accent-dim);
+        }
+        
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            border-color: var(--accent-dim);
+            transform: translateY(-2px);
+        }
+        
+        .status-online {
+            color: var(--success);
+            text-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
+        }
+        
+        .status-offline {
+            color: var(--text-secondary);
+        }
+        
+        input, textarea {
+            background: var(--bg-tertiary);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+        input:focus, textarea:focus {
+            border-color: var(--accent);
+        }
+        
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        
+        .online .pulse-dot { background: var(--success); }
+        .offline .pulse-dot { background: var(--text-secondary); }
+        
+        .slide-enter-active, .slide-leave-active {
+            transition: all 0.3s ease;
+        }
+        .slide-enter-from, .slide-leave-to {
+            opacity: 0;
+            transform: translateX(20px);
+        }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 侧边栏 -->
+        <aside class="fixed left-0 top-0 h-full w-64 glass p-4 flex flex-col">
+            <div class="mb-8">
+                <h1 class="text-xl font-bold text-accent">🌐 LAN Manager</h1>
+                <p class="text-xs text-gray-500 mt-1">局域网设备管理</p>
+            </div>
+            
+            <nav class="flex-1 space-y-2">
+                <a @click="currentView = 'devices'" 
+                   class="block p-3 rounded-lg cursor-pointer transition-all"
+                   :class="currentView === 'devices' ? 'bg-accent text-black font-medium' : 'hover:bg-white/5'">
+                    📱 设备列表
+                </a>
+                <a @click="currentView = 'stats'" 
+                   class="block p-3 rounded-lg cursor-pointer transition-all"
+                   :class="currentView === 'stats' ? 'bg-accent text-black font-medium' : 'hover:bg-white/5'">
+                    📊 统计概览
+                </a>
+                <a @click="currentView = 'settings'" 
+                   class="block p-3 rounded-lg cursor-pointer transition-all"
+                   :class="currentView === 'settings' ? 'bg-accent text-black font-medium' : 'hover:bg-white/5'">
+                    ⚙️ 设置
+                </a>
+                <a @click="currentView = 'logs'" 
+                   class="block p-3 rounded-lg cursor-pointer transition-all"
+                   :class="currentView === 'logs' ? 'bg-accent text-black font-medium' : 'hover:bg-white/5'">
+                    📋 扫描日志
+                </a>
+            </nav>
+            
+            <div class="pt-4 border-t border-white/10">
+                <div class="text-xs text-gray-500">
+                    <div class="mono">{{ networkInfo.local_ip }}</div>
+                    <div class="mono">{{ networkInfo.cidr }}</div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- 主内容 -->
+        <main class="ml-64 p-6">
+            <!-- 设备列表视图 -->
+            <div v-if="currentView === 'devices'">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-bold">设备列表</h2>
+                    <div class="flex gap-3">
+                        <input v-model="searchQuery" type="text" placeholder="搜索设备..." 
+                               class="px-4 py-2 rounded-lg w-64">
+                        <label class="flex items-center gap-2 text-sm text-gray-400">
+                            <input type="checkbox" v-model="showOnlineOnly" class="accent-cyan-400">
+                            仅在线
+                        </label>
+                        <button @click="triggerScan" :disabled="scanning" 
+                                class="btn-accent px-4 py-2 rounded-lg flex items-center gap-2">
+                            <span v-if="scanning" class="animate-spin">⟳</span>
+                            <span v-else>🔍</span>
+                            {{ scanning ? '扫描中...' : '扫描网络' }}
+                        </button>
+                    </div>
+                </div>
+                
+                <div v-if="scanning" class="mb-4 p-4 glass rounded-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="animate-spin text-accent">⟳</div>
+                        <span>正在扫描局域网，请稍候...</span>
+                    </div>
+                </div>
+                
+                <!-- 设备表格 -->
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-gray-400 text-sm border-b border-white/10">
+                                <th class="pb-3 pl-2">状态</th>
+                                <th class="pb-3">IP地址</th>
+                                <th class="pb-3">主机名</th>
+                                <th class="pb-3">MAC地址</th>
+                                <th class="pb-3">类型</th>
+                                <th class="pb-3">厂商</th>
+                                <th class="pb-3">延迟</th>
+                                <th class="pb-3">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="device in filteredDevices" :key="device.id" 
+                                class="card hover:bg-white/5 cursor-pointer"
+                                @click="showDeviceDetail(device)">
+                                <td class="py-3 pl-2">
+                                    <span class="inline-flex items-center gap-1" 
+                                          :class="device.is_online ? 'online' : 'offline'">
+                                        <span class="pulse-dot"></span>
+                                        {{ device.is_online ? '在线' : '离线' }}
+                                    </span>
+                                </td>
+                                <td class="py-3 mono text-accent">{{ device.ip_address }}</td>
+                                <td class="py-3">{{ device.hostname || '-' }}</td>
+                                <td class="py-3 mono text-gray-400 text-sm">{{ device.mac_address || '-' }}</td>
+                                <td class="py-3">
+                                    <span class="px-2 py-1 rounded-full text-xs bg-white/10">
+                                        {{ device.device_type || 'Unknown' }}
+                                    </span>
+                                </td>
+                                <td class="py-3 text-gray-400 text-sm">{{ device.vendor || 'Unknown' }}</td>
+                                <td class="py-3">
+                                    <span v-if="device.latency" class="mono text-sm">
+                                        {{ device.latency.toFixed(1) }}ms
+                                    </span>
+                                    <span v-else class="text-gray-500">-</span>
+                                </td>
+                                <td class="py-3">
+                                    <button @click.stop="toggleFavorite(device)" 
+                                            :class="device.is_favorite ? 'text-yellow-400' : 'text-gray-500'"
+                                            class="hover:text-yellow-300 text-xl">
+                                        {{ device.is_favorite ? '★' : '☆' }}
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div v-if="filteredDevices.length === 0" class="text-center py-12 text-gray-500">
+                    <p class="text-4xl mb-4">📡</p>
+                    <p>{{ searchQuery || showOnlineOnly ? '没有找到匹配的设备' : '尚未发现设备，点击"扫描网络"开始' }}</p>
+                </div>
+            </div>
+            
+            <!-- 统计视图 -->
+            <div v-if="currentView === 'stats'" class="max-w-4xl">
+                <h2 class="text-2xl font-bold mb-6">统计概览</h2>
+                
+                <div class="grid grid-cols-4 gap-4 mb-8">
+                    <div class="card p-5">
+                        <div class="text-3xl font-bold text-accent">{{ stats.total_devices }}</div>
+                        <div class="text-gray-400 text-sm mt-1">设备总数</div>
+                    </div>
+                    <div class="card p-5">
+                        <div class="text-3xl font-bold text-green-400">{{ stats.online_devices }}</div>
+                        <div class="text-gray-400 text-sm mt-1">在线设备</div>
+                    </div>
+                    <div class="card p-5">
+                        <div class="text-3xl font-bold text-yellow-400">{{ stats.favorite_devices }}</div>
+                        <div class="text-gray-400 text-sm mt-1">收藏设备</div>
+                    </div>
+                    <div class="card p-5">
+                        <div class="text-3xl font-bold text-purple-400">{{ stats.open_ports }}</div>
+                        <div class="text-gray-400 text-sm mt-1">开放端口</div>
+                    </div>
+                </div>
+                
+                <div class="card p-5">
+                    <h3 class="font-bold mb-4">快速操作</h3>
+                    <div class="flex gap-3">
+                        <button @click="triggerScan" class="btn-accent px-4 py-2 rounded-lg">
+                            🔍 立即扫描
+                        </button>
+                        <button @click="refreshStats" class="btn-outline px-4 py-2 rounded-lg">
+                            🔄 刷新统计
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 设置视图 -->
+            <div v-if="currentView === 'settings'" class="max-w-2xl">
+                <h2 class="text-2xl font-bold mb-6">设置</h2>
+                
+                <div class="space-y-6">
+                    <div class="card p-5">
+                        <h3 class="font-bold mb-4">自动扫描</h3>
+                        <label class="flex items-center gap-3 mb-3">
+                            <input type="checkbox" v-model="settings.auto__scan" @change="saveSettings"
+                                   class="accent-cyan-400 w-5 h-5">
+                            <span>启用自动扫描</span>
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-400">扫描间隔:</span>
+                            <input v-model.number="settings.scan_interval" type="number" min="1" max="1440"
+                                   class="px-3 py-1 rounded w-20 text-center" @change="saveSettings">
+                            <span class="text-gray-400">分钟</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card p-5">
+                        <h3 class="font-bold mb-4">端口扫描列表</h3>
+                        <p class="text-gray-400 text-sm mb-3">用逗号分隔端口号</p>
+                        <textarea v-model="settings.scan_ports" rows="3" class="w-full px-4 py-2 rounded-lg mono text-sm"
+                                  @change="saveSettings"></textarea>
+                    </div>
+                    
+                    <div class="card p-5">
+                        <h3 class="font-bold mb-4">常用端口模板</h3>
+                        <div class="flex flex-wrap gap-2">
+                            <button @click="addPortTemplate('common')" 
+                                    class="px-3 py-1 rounded-full text-xs bg-white/10 hover:bg-accent hover:text-black transition">
+                                常用端口
+                            </button>
+                            <button @click="addPortTemplate('web')" 
+                                    class="px-3 py-1 rounded-full text-xs bg-white/10 hover:bg-accent hover:text-black transition">
+                                Web服务
+                            </button>
+                            <button @click="addPortTemplate('database')" 
+                                    class="px-3 py-1 rounded-full text-xs bg-white/10 hover:bg-accent hover:text-black transition">
+                                数据库
+                            </button>
+                            <button @click="addPortTemplate('windows')" 
+                                    class="px-3 py-1 rounded-full text-xs bg-white/10 hover:bg-accent hover:text-black transition">
+                                Windows
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 扫描日志视图 -->
+            <div v-if="currentView === 'logs'" class="max-w-4xl">
+                <h2 class="text-2xl font-bold mb-6">扫描日志</h2>
+                
+                <div class="card overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-white/5">
+                            <tr class="text-left text-gray-400 text-sm">
+                                <th class="p-4">时间</th>
+                                <th class="p-4">发现设备</th>
+                                <th class="p-4">扫描类型</th>
+                                <th class="p-4">耗时</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="log in logs" :key="log.id" class="border-t border-white/5 hover:bg-white/5">
+                                <td class="p-4 text-gray-400">{{ formatDate(log.created_at) }}</td>
+                                <td class="p-4">{{ log.devices_found }}</td>
+                                <td class="p-4">
+                                    <span class="px-2 py-1 rounded-full text-xs bg-accent/20 text-accent">
+                                        {{ log.scan_type }}
+                                    </span>
+                                </td>
+                                <td class="p-4 mono">{{ log.duration?.toFixed(2) || '-' }}s</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div v-if="logs.length === 0" class="text-center py-12 text-gray-500">
+                    暂无扫描记录
+                </div>
+            </div>
+        </main>
+        
+        <!-- 设备详情弹窗 -->
+        <div v-if="showDetailModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50" @click.self="closeDetailModal">
+            <div class="glass rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                <div class="p-5 border-b border-white/10 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold">{{ selectedDevice.ip_address }}</h3>
+                        <p class="text-gray-400 text-sm">{{ selectedDevice.hostname || '无主机名' }}</p>
+                    </div>
+                    <button @click="closeDetailModal" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+                </div>
+                
+                <div class="p-5 overflow-y-auto flex-1">
+                    <!-- 设备基本信息 -->
+                    <div class="mb-6">
+                        <h4 class="text-sm font-bold text-gray-400 mb-3">设备信息</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-gray-500 text-xs">IP地址</div>
+                                <div class="mono">{{ selectedDevice.ip_address }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500 text-xs">MAC地址</div>
+                                <div class="mono">{{ selectedDevice.mac_address || '-' }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500 text-xs">设备类型</div>
+                                <div>{{ selectedDevice.device_type || 'Unknown' }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500 text-xs">厂商</div>
+                                <div>{{ selectedDevice.vendor || 'Unknown' }}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500 text-xs">在线状态</div>
+                                <div :class="selectedDevice.is_online ? 'status-online' : 'status-offline'">
+                                    {{ selectedDevice.is_online ? '🟢 在线' : '⚪ 离线' }}
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500 text-xs">延迟</div>
+                                <div class="mono">{{ selectedDevice.latency?.toFixed(1) || '-' }}ms</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 设备备注 -->
+                    <div class="mb-6">
+                        <h4 class="text-sm font-bold text-gray-400 mb-3">设备备注</h4>
+                        <textarea v-model="selectedDevice.notes" @blur="saveDeviceNotes"
+                                  placeholder="添加设备备注..." 
+                                  class="w-full px-4 py-2 rounded-lg" rows="2"></textarea>
+                    </div>
+                    
+                    <!-- 端口扫描 -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-sm font-bold text-gray-400">端口扫描</h4>
+                            <button @click="scanDevicePorts" :disabled="portScanning"
+                                    class="btn-outline px-3 py-1 rounded text-sm">
+                                {{ portScanning ? '扫描中...' : '🔍 扫描端口' }}
+                            </button>
+                        </div>
+                        
+                        <div v-if="portScanning" class="text-center py-4">
+                            <div class="animate-spin text-accent text-2xl mb-2">⟳</div>
+                            <p class="text-gray-400">正在扫描端口...</p>
+                        </div>
+                        
+                        <div v-else class="space-y-2">
+                            <div v-for="port in selectedDevice.ports" :key="port.id" 
+                                 class="flex items-start gap-3 p-3 rounded-lg bg-white/5">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="mono text-accent font-bold">{{ port.port }}</span>
+                                        <span class="px-2 py-0.5 rounded text-xs"
+                                              :class="port.status === 'open' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'">
+                                            {{ port.status }}
+                                        </span>
+                                        <span class="text-gray-400 text-sm">{{ port.protocol }}</span>
+                                        <span class="text-gray-500 text-sm">{{ port.service }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex-1">
+                                    <input v-model="port.notes" @blur="savePortNotes(port)"
+                                           placeholder="添加服务备注..." 
+                                           class="w-full px-3 py-1 rounded text-sm">
+                                </div>
+                            </div>
+                            
+                            <div v-if="!selectedDevice.ports?.length" class="text-center py-6 text-gray-500">
+                                <p>点击"扫描端口"检测设备开放的服务</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="p-5 border-t border-white/10">
+                    <button @click="closeDetailModal" class="btn-outline w-full py-2 rounded-lg">
+                        关闭
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 扫描结果通知 -->
+        <div v-if="scanResult" class="fixed bottom-6 right-6 glass p-4 rounded-lg glow">
+            <div class="flex items-center gap-3">
+                <span class="text-green-400 text-xl">✓</span>
+                <div>
+                    <div class="font-medium">{{ scanResult.message }}</div>
+                    <div class="text-gray-400 text-sm">发现 {{ scanResult.devices_found }} 台设备</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+        
+        createApp({
+            setup() {
+                const currentView = ref('devices');
+                const devices = ref([]);
+                const logs = ref([]);
+                const stats = ref({ total_devices: 0, online_devices: 0, favorite_devices: 0, open_ports: 0 });
+                const settings = ref({ auto_scan: false, scan_interval: 60, scan_ports: '' });
+                const networkInfo = ref({ local_ip: '', cidr: '' });
+                
+                const searchQuery = ref('');
+                const showOnlineOnly = ref(false);
+                const scanning = ref(false);
+                const scanResult = ref(null);
+                
+                const showDetailModal = ref(false);
+                const selectedDevice = ref({});
+                const portScanning = ref(false);
+                
+                const API_BASE = '';
+                
+                // 计算属性
+                const filteredDevices = computed(() => {
+                    let result = devices.value;
+                    
+                    if (showOnlineOnly.value) {
+                        result = result.filter(d => d.is_online);
+                    }
+                    
+                    if (searchQuery.value) {
+                        const q = searchQuery.value.toLowerCase();
+                        result = result.filter(d => 
+                            d.ip_address?.toLowerCase().includes(q) ||
+                            d.mac_address?.toLowerCase().includes(q) ||
+                            d.hostname?.toLowerCase().includes(q) ||
+                            d.vendor?.toLowerCase().includes(q)
+                        );
+                    }
+                    
+                    return result;
+                });
+                
+                // 方法
+                const loadDevices = async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/api/devices`);
+                        devices.value = await res.json();
+                    } catch (e) {
+                        console.error('加载设备失败:', e);
+                    }
+                };
+                
+                const loadNetworkInfo = async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/api/network`);
+                        networkInfo.value = await res.json();
+                    } catch (e) {
+                        console.error('获取网络信息失败:', e);
+                    }
+                };
+                
+                const loadStats = async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/api/stats`);
+                        stats.value = await res.json();
+                    } catch (e) {
+                        console.error('获取统计失败:', e);
+                    }
+                };
+                
+                const loadSettings = async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/api/settings`);
+                        const data = await res.json();
+                        settings.value = {
+                            auto_scan: data.auto_scan === 'true',
+                            scan_interval: parseInt(data.scan_interval) || 60,
+                            scan_ports: data.scan_ports || ''
+                        };
+                    } catch (e) {
+                        console.error('加载设置失败:', e);
+                    }
+                };
+                
+                const loadLogs = async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/api/logs`);
+                        logs.value = await res.json();
+                    } catch (e) {
+                        console.error('加载日志失败:', e);
+                    }
+                };
+                
+                const triggerScan = async () => {
+                    scanning.value = true;
+                    scanResult.value = null;
+                    try {
+                        const res = await fetch(`${API_BASE}/api/devices/scan`, { method: 'POST' });
+                        const data = await res.json();
+                        scanResult.value = data;
+                        await loadDevices();
+                        await loadStats();
+                        await loadLogs();
+                        setTimeout(() => scanResult.value = null, 5000);
+                    } catch (e) {
+                        console.error('扫描失败:', e);
+                    } finally {
+                        scanning.value = false;
+                    }
+                };
+                
+                const refreshStats = async () => {
+                    await loadStats();
+                };
+                
+                const toggleFavorite = async (device) => {
+                    device.is_favorite = !device.is_favorite;
+                    try {
+                        await fetch(`${API_BASE}/api/devices/${device.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ is_favorite: device.is_favorite })
+                        });
+                        await loadStats();
+                    } catch (e) {
+                        console.error('更新收藏状态失败:', e);
+                    }
+                };
+                
+                const showDeviceDetail = async (device) => {
+                    selectedDevice.value = { ...device };
+                    try {
+                        const res = await fetch(`${API_BASE}/api/devices/${device.id}`);
+                        const data = await res.json();
+                        selectedDevice.value = data;
+                    } catch (e) {
+                        console.error('获取设备详情失败:', e);
+                    }
+                    showDetailModal.value = true;
+                };
+                
+                const closeDetailModal = () => {
+                    showDetailModal.value = false;
+                    selectedDevice.value = {};
+                    loadDevices();
+                };
+                
+                const scanDevicePorts = async () => {
+                    portScanning.value = true;
+                    try {
+                        await fetch(`${API_BASE}/api/devices/${selectedDevice.value.id}/scan`, { method: 'POST' });
+                        // 重新获取设备详情
+                        const res = await fetch(`${API_BASE}/api/devices/${selectedDevice.value.id}`);
+                        selectedDevice.value = await res.json();
+                        await loadStats();
+                    } catch (e) {
+                        console.error('端口扫描失败:', e);
+                    } finally {
+                        portScanning.value = false;
+                    }
+                };
+                
+                const saveDeviceNotes = async () => {
+                    try {
+                        await fetch(`${API_BASE}/api/devices/${selectedDevice.value.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: selectedDevice.value.notes })
+                        });
+                    } catch (e) {
+                        console.error('保存备注失败:', e);
+                    }
+                };
+                
+                const savePortNotes = async (port) => {
+                    try {
+                        await fetch(`${API_BASE}/api/ports/${port.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: port.notes })
+                        });
+                    } catch (e) {
+                        console.error('保存端口备注失败:', e);
+                    }
+                };
+                
+                const saveSettings = async () => {
+                    try {
+                        await fetch(`${API_BASE}/api/settings`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                auto_Scan: settings.value.auto_scan,
+                                scan_interval: settings.value.scan_interval,
+                                scan_ports: settings.value.scan_ports
+                            })
+                        });
+                    } catch (e) {
+                        console.error('保存设置失败:', e);
+                    }
+                };
+                
+                const addPortTemplate = (type) => {
+                    const templates = {
+                        common: '22,80,443,21,23,25,53,110,143,3389,8080,8443,3306,27017',
+                        web: '80,443,8080,8443,88,8000,8888,3000,5000',
+                        database: '3306,5432,27017,6379,9200,11211,1521',
+                        windows: '135,139,445,3389,5985,5986,8530,8531'
+                    };
+                    settings.value.scan_ports = templates[type] || '';
+                    saveSettings();
+                };
+                
+                const formatDate = (dateStr) => {
+                    if (!dateStr) return '-';
+                    return new Date(dateStr).toLocaleString('zh-CN');
+                };
+                
+                // 初始化
+                onMounted(async () => {
+                    await loadNetworkInfo();
+                    await loadDevices();
+                    await loadStats();
+                    await loadSettings();
+                    await loadLogs();
+                });
+                
+                return {
+                    currentView,
+                    devices,
+                    logs,
+                    stats,
+                    settings,
+                    networkInfo,
+                    searchQuery,
+                    showOnlineOnly,
+                    scanning,
+                    scanResult,
+                    showDetailModal,
+                    selectedDevice,
+                    portScanning,
+                    filteredDevices,
+                    loadDevices,
+                    triggerScan,
+                    refreshStats,
+                    toggleFavorite,
+                    showDeviceDetail,
+                    closeDetailModal,
+                    scanDevicePorts,
+                    saveDeviceNotes,
+                    savePortNotes,
+                    saveSettings,
+                    addPortTemplate,
+                    formatDate
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

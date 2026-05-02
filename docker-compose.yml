@@ -1,0 +1,26 @@
+# LAN Device Manager - Docker Compose
+services:
+  lan-manager:
+    build: .
+    container_name: lan-device-manager
+    restart: unless-stopped
+    network_mode: host  # 使用宿主机网络以访问局域网
+    volumes:
+      - ./data:/data  # 持久化数据库
+    environment:
+      - DEBUG=False
+    # 端口映射 (如果network_mode为bridge时使用)
+    # ports:
+    #   - "5000:5000"
+    
+  # 如果需要更复杂的部署，可以使用以下配置
+  # lan-manager-privileged:
+  #   build: .
+  #   container_name: lan-device-manager
+  #   restart: unless-stopped
+  #   privileged: true  # 需要特权模式以进行网络扫描
+  #   network_mode: host
+  #   volumes:
+  #     - ./data:/data
+  #   environment:
+  #     - DEBUG=False
