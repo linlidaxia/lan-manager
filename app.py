@@ -248,47 +248,6 @@ def scan_network(cidr):
     start_time = time.time()
     devices_found = 0
     
-    # 使用ARP扫描
-    try:
-        result = subprocess.run(
-            ['nmap', '-sn', '-PR', '-oG', '-', cidr],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        # 解析nmap结果
-        ips = []
-        for line in result.stdout.split('\n'):
-            if 'Up' in line and '$' in line:
-                parts = line.split()
-                for part in parts:
-                    if part.startswith('$') and not part.startswith('$MAC'):
-                        ip = part[1:]
-                        if '.' in ip:
-                            ips.append(ip)
-        
-        devices_found = len(ips)
-        
-    except Exception as e:
-        print(f"nmap扫描失败: {e}")
-        # 回退到ping扫描
-        network_info = get_local_network()
-        network = network_info['network']
-        for i in range(1, 255):
-            ip = f"{network}.{i}"
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.1)
-                result = sock.connect_ex((ip, 80))
-                sock.close()
-                if result == 0:
-                    ips.append(ip)
-                    devices_found += 1
-            except:
-                pass
-    
-    # 获取每个设备的详细信息
     devices = []
     db = get_db()
     cursor = db.cursor()
