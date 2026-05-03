@@ -52,7 +52,7 @@ def scan_network(cidr):
         import shutil
         if shutil.which('nmap'):
             print("Using nmap...")
-            r = subprocess.run(['nmap','-sn','-PR','-oG','-',cidr], capture_output=True, text=True, timeout=120)
+            r = subprocess.run(['nmap','-sn','-PR','-oG','-',cidr], capture_output=True, text=True, timeout=30)
             for l in r.stdout.split('\n'):
                 if 'Up' in l and '$' in l:
                     for p in l.split():
@@ -64,8 +64,8 @@ def scan_network(cidr):
     if len(ips) < 2:
         print("Using ping scan...")
         net = get_network()['network']
-        pc = ['ping','-n','1','-w','200'] if platform.system()=='Windows' else ['ping','-c','1','-W','1']
-        def ck(ip): r=subprocess.run(pc+[ip],capture_output=True,timeout=1); return ip if r.returncode==0 and ip!=local_ip else None
+        pc = ['ping','-n','1','-w','200'] if platform.system()=='Windows' else ['ping','-c','1','-W','2']
+        def ck(ip): r=subprocess.run(pc+[ip],capture_output=True,timeout=2); return ip if r.returncode==0 and ip!=local_ip else None
         with concurrent.futures.ThreadPoolExecutor(max_workers=50) as ex:
             for f in concurrent.futures.as_completed([ex.submit(ck,f"{net}.{i}") for i in range(1,255)]):
                 if f.result(): ips.append(f.result())
