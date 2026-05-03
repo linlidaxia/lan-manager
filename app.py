@@ -113,23 +113,54 @@ def close_connection(exception):
 
 def get_local_network():
     """获取本机局域网信息"""
+    local_ip = None
+    
+    # 方法1：通过 UDP 连接到外部 IP（不发送数据）
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
+        s.settimeout(2)
+        s.connect(("10.255.255.255", 1))
         local_ip = s.getsockname()[0]
         s.close()
-        
-        # 推断子网
-        parts = local_ip.split('.')
-        network = f"{parts[0]}.{parts[1]}.{parts[2]}"
-        
-        return {
-            'local_ip': local_ip,
-            'network': network,
-            'cidr': f"{network}.0/24"
-        }
-    except Exception as e:
-        return {'local_ip': '192.168.1.1', 'network': '192.168.1', 'cidr': '192.168.1.0/24'}
+    except:
+        pass
+    
+    # 方法2：获取主机名对应的 IP
+    if not local_ip or local_ip.startswith('127.'):
+        try:
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+        except:
+            pass
+    
+    # 方法3：遍历网络接口
+    if not local_ip or local_ip.startswith('127.'):
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['ipconfig', 'getifaddr', 'en0'],
+                capture_output=True, text=True, timeout=2
+            )
+            if result.returncode == 0:
+                ip = result.stdout.strip()
+                if ip and not ip.startswith('127.'):
+                    local_ip = ip
+        except:
+            pass
+    
+    # 如果还是 127.x.x.x，使用默认
+    if not local_ip or local_ip.startswith('127.'):
+        local_ip = '192.168.1.1'
+    
+    # 推断子网
+    parts = local_ip.split('.')
+    network = f"{parts[0]}.{parts[1]}.{parts[2]}"
+    
+    return {
+        'local_ip': local_ip,
+        'network': network,
+        'cidr': f"{network}.0/24"
+    }
 
 def get_vendor_from_mac(mac):
     """通过MAC地址获取厂商信息"""
