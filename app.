@@ -144,4 +144,4 @@ if __name__=='__main__':
     print('  LAN Device Manager Started')
     print('  URL: http://localhost:5000')
     print('========================================')
-    app.run(host='0.0.0.0', port=PORT, debug=DEBUG)
+    app.run(host="0.0.0.0", port=PORT, use_reloader=False, debug=DEBUG)
