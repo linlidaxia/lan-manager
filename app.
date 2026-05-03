@@ -136,7 +136,7 @@ def upd_port(id):
 def del_port(id): get_db().execute('DELETE FROM ports WHERE id=?',(id,)); return jsonify({'success':True})
 
 @app.route('/api/logs')
-def logs(): return jsonify([dict(r) for r in get_db().execute('SELECT * FROM scan_logs ORDER BY id DESC DESC LIMIT 20').fetchall()])
+def logs(): return jsonify([dict(r) for r in get_db().execute('SELECT * FROM scan_logs ORDER BY id DESC LIMIT 20').fetchall()])
 
 @app.route('/api/settings')
 def sets(): return jsonify({r['key']:r['value'] for r in get_db().execute('SELECT * FROM settings').fetchall()})
