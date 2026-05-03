@@ -138,7 +138,7 @@ def get_local_network():
         try:
             import subprocess
             result = subprocess.run(
-                ['sh', '-c', 'ifconfig | grep inet | grep -v 127.0.0.1 | head -1 | awk "{print $2}"'],
+                ['sh', '-c', 'ifconfig | grep inet | grep broadcast | head -1 | awk "{print $2}"'],
                 capture_output=True, text=True, timeout=2
             )
             if result.returncode == 0:
