@@ -34,8 +34,21 @@ def get_db():
 def close(exc): db = getattr(g,'_database',None); db.close() if db else None
 
 def get_local_ip():
-    try: s=socket.socket(); s.connect(('8.8.8.8',80)); ip=s.getsockname()[0]; s.close(); return ip
-    except: return '192.168.1.100'
+    try:
+        import subprocess
+        try:
+            r = subprocess.run(['hostname','-I'], capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                ip = r.stdout.strip().split()[0]
+                if '.' in ip: return ip
+        except: pass
+        s = socket.socket()
+        s.connect(('10.255.255.255', 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except: return '127.0.0.1'
+
 
 def get_network():
     ip = get_local_ip(); p=ip.split('.'); return {'local_ip':ip,'network':f"{p[0]}.{p[1]}.{p[2]}","cidr":f"{p[0]}.{p[1]}.{p[2]}.0/24"}
