@@ -139,9 +139,24 @@ def stats():
     db=get_db(); return jsonify({'total_devices':db.execute('SELECT COUNT(*) FROM devices').fetchone()[0],'onlie_devices':db.execute('SELECT COUNT(*) FROM devices WHERE is_online=1').fetchone()[0],'favorite_devices':db.execute('SELECT COUNT(*) FROM devices WHERE is_favorite=1').fetchone()[0],'open_ports':0})
 
 if __name__=='__main__':
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    test_port = PORT
+    while test_port < PORT + 10:
+        try:
+            s.bind(('0.0.0.0', test_port))
+            s.close()
+            actual_port = test_port
+            break
+        except:
+            test_port += 1
+    else:
+        print('All ports in use!')
+        actual_port = 0
+    print(f'Starting on port {actual_port}...')
     init_db()
     print('========================================')
     print('  LAN Device Manager Started')
     print('  URL: http://localhost:5000')
     print('========================================')
-    app.run(host="0.0.0.0", port=PORT, use_reloader=False, debug=DEBUG)
+    app.run(host="0.0.0.0", port=actual_port, debug=DEBUG)
