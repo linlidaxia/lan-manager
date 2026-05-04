@@ -33,22 +33,42 @@ def get_db():
 @app.teardown_request
 def close(exc): db = getattr(g,'_database',None); db.close() if db else None
 
-def get_actual_ip(): """获取本机局域网IP""" 
-try: import subprocess; r = subprocess.run(['sh', '-c', 'ifconfig | grep inet | grep broadcast | head -1 | awk {print $2}'], capture_output=True, text=True, timeout=2); 
-if r.returncode == 0: ip = r.stdout.strip(); 
-if ip and not ip.startswith('127.'): return ip 
-except: pass 
-try: import subprocess; r = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=2); 
-if r.returncode == 0: ip = r.stdout.strip().split()[0]; 
-if '.' in ip: return ip 
-except: pass 
-try: s = socket.socket(); s.connect(('10.255.255.255', 1)); ip = s.getsockname()[0]; s.close(); 
-if not ip.startswith('127.'): return ip 
-except: pass 
-return '127.0.0.1' 
-def get_network():
-    ip = get_local_ip(); p=ip.split('.'); return {'local_ip':ip,'network':f"{p[0]}.{p[1]}.{p[2]}","cidr":f"{p[0]}.{p[1]}.{p[2]}.0/24"}
-
+def get_actual_ip():
+    """获取本机局域网IP"""
+    # 方法1: ifconfig
+    try:
+        import subprocess
+        r = subprocess.run(
+            ['sh', '-c', 'ifconfig | grep inet | grep broadcast | head -1 | awk {print $2}'],
+            capture_output=True, text=True, timeout=2
+        )
+        if r.returncode == 0:
+            ip = r.stdout.strip()
+            if ip and not ip.startswith('127.'):
+                return ip
+    except: pass
+    
+    # 方法2: hostname -I
+    try:
+        import subprocess
+        r = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=2)
+        if r.returncode == 0:
+            ip = r.stdout.strip().split()[0]
+            if '.' in ip:
+                return ip
+    except: pass
+    
+    # 方法3: UDP socket
+    try:
+        s = socket.socket()
+        s.connect(('10.255.255.255', 1))
+        ip = s.getsockname()[0]
+        s.close()
+        if not ip.startswith('127.'):
+            return ip
+    except: pass
+    
+    return '127.0.0.1'
 def get_vendor(mac):
     m={'00:50:56':'VMware','00:0C:29':'VMware','B8:27:EB':'RPi','DC:A6:32':'RPi','3C:06:30':'Apple','A4:5E:60':'Apple','00:14:6C':'Netgear','44:94:FC':'Netgear','00:1D:0F':'TP-Link','50:C7:BF':'TP-Link','5C:A6:E6':'Xiaomi','34:80:B3':'Xiaomi'}
     return m.get(mac[:8].upper() if mac else '', 'Unknown')
