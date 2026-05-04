@@ -69,6 +69,15 @@ def get_actual_ip():
     except: pass
     
     return '127.0.0.1'
+
+
+def get_network():
+    """获取网络信息"""
+    ip = get_actual_ip()
+    parts = ip.split('.')
+    network = f"{parts[0]}.{parts[1]}.{parts[2]}"
+    return {'local_ip': ip, 'network': network, 'cidr': f"{network}.0/24"}
+
 def get_vendor(mac):
     m={'00:50:56':'VMware','00:0C:29':'VMware','B8:27:EB':'RPi','DC:A6:32':'RPi','3C:06:30':'Apple','A4:5E:60':'Apple','00:14:6C':'Netgear','44:94:FC':'Netgear','00:1D:0F':'TP-Link','50:C7:BF':'TP-Link','5C:A6:E6':'Xiaomi','34:80:B3':'Xiaomi'}
     return m.get(mac[:8].upper() if mac else '', 'Unknown')
