@@ -33,42 +33,55 @@ def get_db():
 @app.teardown_request
 def close(exc): db = getattr(g,'_database',None); db.close() if db else None
 
-def get_actual_ip():
+def get_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_actual_ip():
     """获取本机局域网IP"""
-    # 方法1: ifconfig
-    try:
-        import subprocess
-        r = subprocess.run(
-            ['sh', '-c', 'ifconfig | grep inet | grep broadcast | head -1 | awk {print $2}'],
-            capture_output=True, text=True, timeout=2
-        )
-        if r.returncode == 0:
-            ip = r.stdout.strip()
-            if ip and not ip.startswith('127.'):
-                return ip
-    except: pass
+    import subprocess
+    import socket
     
-    # 方法2: hostname -I
+    # 方法1: socket连接获取本机IP
     try:
-        import subprocess
-        r = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=2)
-        if r.returncode == 0:
-            ip = r.stdout.strip().split()[0]
-            if '.' in ip:
-                return ip
-    except: pass
-    
-    # 方法3: UDP socket
-    try:
-        s = socket.socket()
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('10.255.255.255', 1))
         ip = s.getsockname()[0]
         s.close()
-        if not ip.startswith('127.'):
+        if ip and not ip.startswith('127.'):
             return ip
     except: pass
     
+    # 方法2: hostname解析
+    try:
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(hostname)
+        if ip and not ip.startswith('127.'):
+            return ip
+    except: pass
+    
+    # 方法3: ifconfig
+    for cmd in ['/sbin/ifconfig', 'ifconfig']:
+        try:
+            r = subprocess.run([cmd, '-a'], capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                for line in r.stdout.split('\n'):
+                    if 'inet ' in line and '127.0.0.1' not in line:
+                        parts = line.split()
+                        for i, p in enumerate(parts):
+                            if p == 'inet':
+                                ip = parts[i+1]
+                                if not ip.startswith('127.'):
+                                    return ip
+        except: continue
+    
+    # 方法4: hostname -I
+    try:
+        r = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=2)
+        if r.returncode == 0:
+            ip = r.stdout.strip().split()[0]
+            if '.' in ip and not ip.startswith('127.'):
+                return ip
+    except: pass
+    
     return '127.0.0.1'
+
 
 
 def get_network():
