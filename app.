@@ -163,6 +163,23 @@ def scan_network(cidr):
     cur.execute('INSERT INTO scan_logs (devices_found,scan_type,duration) VALUES (?,?,?)',(len(ips),'network',time.time()-t0)); db.commit()
     return len(ips)
 
+def scan_ports(ip, ports):
+    """扫描指定IP的端口"""
+    open_ports = []
+    def check_port(port):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            result = s.connect_ex((ip, port))
+            s.close()
+            return port if result == 0 else None
+        except: return None
+    
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+        results = list(ex.map(check_port, ports))
+    return [r for r in results if r]
+
 @app.route('/')
 def idx(): return send_from_directory(os.path.join(BASE_DIR,'templates'),'index.html')
 
@@ -191,6 +208,37 @@ def upd_dev(id):
 
 @app.route('/api/devices/scan', methods=['POST'])
 def scan(): count=scan_network(get_network()['cidr']); return jsonify({'success':True,'devices_found':count,'message':f'Found {count} devices'})
+
+@app.route('/api/devices/<int:id>/scan', methods=['POST'])
+def scan_device_ports(id):
+    """扫描指定设备的端口"""
+    db = get_db()
+    device = db.execute('SELECT * FROM devices WHERE id=?', (id,)).fetchone()
+    if not device:
+        return jsonify({'error': 'Device not found'}), 404
+    
+    # 获取扫描端口配置
+    settings = {r['key']: r['value'] for r in db.execute('SELECT * FROM settings').fetchall()}
+    ports_str = settings.get('scan_ports', '22,80,443')
+    try:
+        ports = [int(p.strip()) for p in ports_str.split(',') if p.strip().isdigit()]
+    except:
+        ports = [22, 80, 443]
+    
+    ip = device['ip_address']
+    open_ports = scan_ports(ip, ports)
+    
+    # 删除旧的端口记录
+    db.execute('DELETE FROM ports WHERE device_id=?', (id,))
+    
+    # 保存新扫描到的端口
+    for port in open_ports:
+        service = {22: 'SSH', 80: 'HTTP', 443: 'HTTPS', 21: 'FTP', 23: 'Telnet', 3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis', 27017: 'MongoDB'}.get(port, '')
+        db.execute('INSERT INTO ports (device_id, port, protocol, service, status) VALUES (?, ?, ?, ?, ?)',
+                   (id, port, 'TCP', service, 'open'))
+    db.commit()
+    
+    return jsonify({'success': True, 'ports_found': len(open_ports), 'open_ports': open_ports})
 
 @app.route('/api/ports/<int:id>', methods=['PUT'])
 def upd_port(id):
