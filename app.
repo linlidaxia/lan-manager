@@ -33,7 +33,7 @@ def get_db():
 @app.teardown_request
 def close(exc): db = getattr(g,'_database',None); db.close() if db else None
 
-def get_actual_actual_actual_actual_ip():
+def get_actual_ip():
     """获取本机局域网IP"""
     import subprocess
     import socket
@@ -45,7 +45,7 @@ def get_actual_actual_actual_actual_ip():
         ip = s.getsockname()[0]
         s.close()
         if ip and not ip.startswith('127.'):
-            print(f'DEBUG: get_actual_actual_actual_actual_ip returning: {ip}')
+            print(f'DEBUG: get_actual_ip returning: {ip}')
             return ip
     except: pass
     
@@ -54,7 +54,7 @@ def get_actual_actual_actual_actual_ip():
         hostname = socket.gethostname()
         ip = socket.gethostbyname(hostname)
         if ip and not ip.startswith('127.'):
-            print(f'DEBUG: get_actual_actual_actual_actual_ip returning: {ip}')
+            print(f'DEBUG: get_actual_ip returning: {ip}')
             return ip
     except: pass
     
@@ -70,7 +70,7 @@ def get_actual_actual_actual_actual_ip():
                             if p == 'inet':
                                 ip = parts[i+1]
                                 if not ip.startswith('127.'):
-                                    print(f'DEBUG: get_actual_actual_actual_actual_ip returning: {ip}')
+                                    print(f'DEBUG: get_actual_ip returning: {ip}')
             return ip
         except: continue
     
@@ -80,7 +80,7 @@ def get_actual_actual_actual_actual_ip():
         if r.returncode == 0:
             ip = r.stdout.strip().split()[0]
             if '.' in ip and not ip.startswith('127.'):
-                print(f'DEBUG: get_actual_actual_actual_actual_ip returning: {ip}')
+                print(f'DEBUG: get_actual_ip returning: {ip}')
             return ip
     except: pass
     
@@ -100,9 +100,26 @@ def get_vendor(mac):
     m={'00:50:56':'VMware','00:0C:29':'VMware','B8:27:EB':'RPi','DC:A6:32':'RPi','3C:06:30':'Apple','A4:5E:60':'Apple','00:14:6C':'Netgear','44:94:FC':'Netgear','00:1D:0F':'TP-Link','50:C7:BF':'TP-Link','5C:A6:E6':'Xiaomi','34:80:B3':'Xiaomi'}
     return m.get(mac[:8].upper() if mac else '', 'Unknown')
 
+def get_mac_address(ip):
+    """通过ARP获取IP对应的MAC地址"""
+    try:
+        # 先尝试ping一下，触发ARP缓存
+        subprocess.run(['ping', '-c', '1', '-W', '1', ip], capture_output=True, timeout=2)
+        # 然后查ARP表
+        r = subprocess.run(['arp', '-n', ip], capture_output=True, text=True, timeout=2)
+        if r.returncode == 0:
+            for line in r.stdout.split('\n'):
+                if ip in line:
+                    parts = line.split()
+                    for p in parts:
+                        if ':' in p and len(p) == 17:
+                            return p.upper()
+    except: pass
+    return None
+
 def scan_network(cidr):
     import concurrent.futures
-    t0 = time.time(); ips = []; local_ip = get_local_ip()
+    t0 = time.time(); ips = []; local_ip = get_actual_ip()
     print(f"Scanning: {cidr}")
     try:
         import shutil
@@ -127,16 +144,22 @@ def scan_network(cidr):
                 if f.result(): ips.append(f.result())
         print(f"ping found: {len(ips)}")
     db = get_db(); cur = db.cursor()
+    now = datetime.now()  # 统一使用同一个时间点
     for ip in ips:
-        try: mac, host = None, None
-        except: pass
+        mac = get_mac_address(ip)  # 获取MAC地址
+        host = None
         lat = 0
         try: r=subprocess.run(pc+[ip],capture_output=True,text=True,timeout=2); lat=float(r.stdout.split('time=')[1].split()[0]) if 'time=' in r.stdout else 0
         except: pass
-        try: cur.execute('INSERT OR REPLACE INTO devices (ip_address,mac_address,hostname,vendor,is_online,latency,last_seen) VALUES (?,?,?,?,1,?,?)',(ip,mac,host,get_vendor(mac),lat,datetime.now()))
+        try: cur.execute('INSERT OR REPLACE INTO devices (ip_address,mac_address,hostname,vendor,is_online,latency,last_seen) VALUES (?,?,?,?,1,?,?)',(ip,mac,host,get_vendor(mac),lat,now))
         except: pass
     db.commit()
-    cur.execute('UPDATE devices SET is_online=0 WHERE last_seen<?',(datetime.now(),)); db.commit()
+    # 先将所有设备设为离线，再把扫描到的设为在线
+    cur.execute('UPDATE devices SET is_online=0')
+    if ips:
+        placeholders = ','.join(['?'] * len(ips))
+        cur.execute(f'UPDATE devices SET is_online=1, last_seen=? WHERE ip_address IN ({placeholders})', [now] + ips)
+    db.commit()
     cur.execute('INSERT INTO scan_logs (devices_found,scan_type,duration) VALUES (?,?,?)',(len(ips),'network',time.time()-t0)); db.commit()
     return len(ips)
 
